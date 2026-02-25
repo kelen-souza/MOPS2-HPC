@@ -32,3 +32,6 @@ jobs:
 
       - name: Run flak8
         uses: py-actions/flake8@v2
+        with:
+          max-line-length: "100"
+          ignore: "F405"
