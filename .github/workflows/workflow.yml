@@ -1,0 +1,34 @@
+name: linting
+
+run-name: ${{github.actor}} is pushing a new commit.
+
+on:
+  push:
+    branches:
+      - main
+  pull-request:
+    branches:
+      - main
+
+permissions:
+  checks: write
+  contents: write
+
+jobs:
+  run-linter:
+    name: "Run linter"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Git repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+      
+      - name: Install Python dependencies
+        run: pip install black flake8
+
+      - name: Run flak8
+        uses: py-actions/flake8@v2
