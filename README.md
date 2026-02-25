@@ -25,5 +25,53 @@ O _workflow_ tem como requisitos os seguintes programas e bibliotecas:
  * PyCOMPSs $\geq$ v3.3.3
  * BioPython $\geq$ v1.85
 
+## Uso
 
+O script deve ser executado a partir da linha de comando da seguinte forma:
+
+```bash
+python script.py -i <arquivo_fasta> [opções]
+```
+
+## Argumentos de Linha de Comando
+
+### Argumentos Obrigatórios
+
+* **`-i`, `--input`** (`str`, obrigatório)
+
+  Caminho para o arquivo multi-FASTA de entrada contendo as sequências a serem analisadas.
+
+### Argumentos Opcionais
+
+* **`-w`, `--workdir`** (`str`, opcional, padrão: diretório de trabalho atual)
+
+  Diretório de trabalho (caminho absoluto) onde todos os arquivos de saída gerados pelo workflow serão armazenados.
+
+* **`-m`, `--max_seqs`** (`int`, opcional, padrão: `5`)
+
+  Número máximo de sequências que serão selecionadas e submetidas à etapa de alinhamento múltiplo de sequências utilizando o Pastar.
+
+* **`-p`, `--pastar_threads`** (`int`, opcional, padrão: `1`)
+
+  Número de threads a serem utilizadas pelo Pastar durante o processo de alinhamento.
+
+* **`-s`, `--similar` / `--no-similar`** (`bool`, opcional, padrão: `False`)
+
+  Estratégia de seleção das sequências:
+
+  * Quando habilitado (`--similar`), o workflow seleciona as sequências mais similares.
+  * Quando omitido ou desabilitado (`--no-similar`, comportamento padrão), o workflow seleciona as sequências mais divergentes.
+
+## Exemplo
+
+```bash
+python script.py \
+  --input sequences.fasta \
+  --workdir /results/ \
+  --max_seqs 10 \
+  --pastar_threads 4 \
+  --similar
+```
+
+Esse comando seleciona até 10 sequências similares a partir de `sequences.fasta`, executa o Pastar utilizando 4 threads e armazena todos os resultados no diretório `./results/`.
 

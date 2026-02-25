@@ -23,7 +23,7 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, sim
             folders_to_create.append(create_dir(
                 os.path.join(pairs_rootdir, pair_id)))
     # sync after creating all the folders to avoid error on pycompss
-    compss_wait_on(folders_to_create)
+    compss_barrier()
     for i in range(len(split_files)):
         for j in range(i + 1, len(split_files)):
             seq1 = split_files[i]
@@ -44,7 +44,12 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, sim
     filter_sequences(metrics, sequence_dir, max_sequences,
                      similar, joined_sequences)
     msa_alignment = os.path.join(base_work_dir, "msa_alignment.fasta")
-    compss_wait_on(pastar(msa_alignment, pastar_threads, joined_sequences))
+    result = pastar(msa_alignment, pastar_threads, joined_sequences)
+    compss_wait_on(result)
+    if os.path.exists(msa_alignment):
+        print("Workflow finished with success")
+    else:
+        print("Workflow failed!")
 
 
 if __name__ == "__main__":
