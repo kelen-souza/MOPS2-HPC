@@ -2,7 +2,8 @@ from pycompss.api.task import task
 from pycompss.api.binary import binary
 from pycompss.api.constraint import constraint
 from pycompss.api.parameter import *
-
+import csv
+import os
 
 MASA_BINARY = "masa-openmp"
 
@@ -61,40 +62,6 @@ def get_metrics(pair_dir, alignment_file, seq1_ac, seq2_ac):
           metrics["sequence_2"] = seq2_ac
      return metrics
 
-@task(metrics=COLLECTION_IN, seq_folder=IN, max_seqs=IN, joined_sequences=FILE_OUT)
-def filter_sequences(metrics, seq_folder, max_seqs, similar, joined_sequences):
-     import os
-     from pycompss.api.api import compss_open
-     seqs_total_score = dict()
-     #get the total score of the pairwise alignment
-     for m in metrics:
-          if seqs_total_score.get(m["sequence_1"]) is None:
-               seqs_total_score[m["sequence_1"]] = list()
-          if seqs_total_score.get(m["sequence_2"]) is None:
-               seqs_total_score[m["sequence_2"]] = list()
-          seqs_total_score[m["sequence_1"]].append(m["total_score"])
-          seqs_total_score[m["sequence_2"]].append(m["total_score"])
-     avg_score_seq = [(x, sum(y)/len(y)) for x, y in seqs_total_score.items()]
-     score_sorted = sorted(avg_score_seq, key=lambda x: x[1], reverse=similar)
-     selected = list()
-     print("Score of each sequence")
-     for i, j in score_sorted:
-          print(f"{i}: {j}")
-     if len(score_sorted) >= max_seqs:
-          for i in range(0, max_seqs):
-               selected.append(score_sorted[i][0])
-     else:
-          selected = [x[0] for x in score_sorted]
-     text_seqs = ""
-     for s in selected:
-          with open(os.path.join(seq_folder, s), "r") as file_:
-               text = file_.read()
-               text_seqs += text
-     with compss_open(joined_sequences, "w+") as file_:
-          file_.write(text_seqs)
-     return joined_sequences
-
-
 @task(multifasta_file=FILE_IN, sequence_dir=IN, returns=list)
 def split_sequences(multifasta_file, sequence_dir):
      """Split a multifasta file into N fasta files, with one sequence each
@@ -119,6 +86,91 @@ def split_sequences(multifasta_file, sequence_dir):
           record_ids.append(f"{seq_id}.fasta")
      return record_ids
 
+@task(metrics=IN, returns=float)
+def compute_identity(metrics):
+    matches = float(metrics["matches"])
+    mismatches = float(metrics["mismatches"])
+    gap_openings = float(metrics["gap_openings"])
+    gap_extentions = float(metrics["gap_extentions"])
+
+    alignment_length = matches + mismatches + gap_openings + gap_extentions
+
+    if alignment_length == 0:
+        return 0.0
+
+    return (matches / alignment_length) * 100.0
+
+def maxmin_selection(pairs, sequences, k, mode="divergent"):
+    """
+    mode = "divergent"  → seleciona mais divergentes
+    mode = "similar"    → seleciona mais similares
+    """
+
+    similarity = {s: {} for s in sequences}
+
+    for s1, s2, identity in pairs:
+        similarity[s1][s2] = identity
+        similarity[s2][s1] = identity
+
+    if mode == "divergent":
+        distance = {
+            s: {
+                t: 100.0 - similarity[s][t]
+                for t in similarity[s]
+            }
+            for s in similarity
+        }
+    else:
+        distance = similarity
+
+    avg_metric = {}
+    for s in sequences:
+        if distance[s]:
+            avg_metric[s] = sum(distance[s].values()) / len(distance[s])
+        else:
+            avg_metric[s] = 0.0
+
+    selected = [max(avg_metric, key=avg_metric.get)]
+
+    while len(selected) < k:
+        best_seq = None
+        best_score = -1.0
+
+        for s in sequences:
+            if s in selected:
+                continue
+
+            values = [distance[s][x] for x in selected if x in distance[s]]
+            if not values:
+                continue
+
+            min_value = min(values)
+
+            if min_value > best_score:
+                best_score = min_value
+                best_seq = s
+
+        if best_seq is None:
+            break
+
+        selected.append(best_seq)
+
+    return selected
+
+@task(selected=COLLECTION_IN, sequence_dir=IN, output_fasta=FILE_OUT)
+def write_selected_sequences(selected, sequence_dir, output_fasta):
+    with open(output_fasta, "w") as out:
+        for seq_file in selected:
+            with open(os.path.join(sequence_dir, seq_file)) as f:
+                out.write(f.read())
+
+@task(pairs=COLLECTION_IN, output_csv=FILE_OUT)
+def write_pairwise_csv(pairs, output_csv):
+    with open(output_csv, "w", newline="") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["seq1", "seq2", "identity"])
+        for s1, s2, identity in pairs:
+            writer.writerow([s1, s2, round(identity, 4)])
 
 #@constraint(computing_units="1")
 @binary(binary="msa_pastar", args="-f {{output}} -t {{threads}} {{input_}}")
