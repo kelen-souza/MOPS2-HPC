@@ -14,13 +14,17 @@ logger.setLevel(logging.DEBUG)
 
 def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, similar):
     align_out = "alignment.00.txt"
+    logger.info(f"Creating sequences directories...")
     sequence_dir = compss_wait_on(apps.create_dir(os.path.join(base_work_dir, "sequences")))
+    logger.info(f"Splitting the sequences...")
     split_files = compss_wait_on(apps.split_sequences(input_alignment_file, sequence_dir))
+    logger.info(f"Creating pairs directories...")
     pairs_rootdir = compss_wait_on(
         apps.create_dir(os.path.join(base_work_dir, "pair_sequences"))
     )
     pair_ids = []
     folders = []
+    logger.info(f"Creating the pairs files...")
     for i in range(len(split_files)):
         for j in range(i + 1, len(split_files)):
             pair_id = (
@@ -30,6 +34,7 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, sim
             pair_ids.append((split_files[i], split_files[j]))
     compss_wait_on(folders)
     raw_metrics = []
+    logger.info(f"Running MASA on the pairs...")
     for seq1, seq2 in pair_ids:
         pair_id = seq1.split(".")[-2] + "_" + seq2.split(".")[-2]
         pair_dir = os.path.join(pairs_rootdir, pair_id)
@@ -40,6 +45,7 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, sim
         metrics = apps.get_metrics(pair_dir, alignf, seq1, seq2)
         raw_metrics.append(metrics)
     identities = []
+    logger.info(f"Computing the metrics...")
     for m in raw_metrics:
         identities.append(apps.compute_identity(m))
     identities = compss_wait_on(identities)
@@ -79,17 +85,18 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, sim
         buffer += f"\t\t{first_selected} vs {other}: " + f"{distance[first_selected][other]:.6f}\n"
     logger.info(buffer)
 
+    logger.info(f"Writing pairwise sequences CSV...")
     csv_out = os.path.join(base_work_dir, "pairwise_identity.csv")
     apps.write_pairwise_csv(pairs, csv_out)
 
+    logger.info(f"Selecting the sequences...")
     selected = apps.maxmin_selection(pairs, split_files, max_sequences, similar)
-
     joined_sequences = os.path.join(base_work_dir, "selected_sequences.fasta")
-
+    logger.info(f"Writing the selected sequences into a file...")
     apps.write_selected_sequences(selected, sequence_dir, joined_sequences)
 
     msa_alignment = os.path.join(base_work_dir, "msa_alignment.fasta")
-
+    logger.info(f"Running MASA...")
     compss_wait_on(apps.pastar(msa_alignment, pastar_threads, joined_sequences))
     logger.info("Finished the execution!")
 
