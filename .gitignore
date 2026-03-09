@@ -1,6 +1,7 @@
 *.err
 *.out
-.COMPSs
+.COMPSs/
 pair_sequences
 sequences
 experiments/
+*.log
