@@ -2,9 +2,7 @@ from pycompss.api.task import task
 from pycompss.api.binary import binary
 from pycompss.api.constraint import constraint
 from pycompss.api.parameter import *
-import csv
 import os
-
 MASA_BINARY = "masa-openmp"
 
 
