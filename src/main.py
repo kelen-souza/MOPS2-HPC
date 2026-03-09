@@ -1,28 +1,42 @@
 from pycompss.api.api import compss_wait_on
-from apps import *
+import apps
 import argparse
 import os
 from pathlib import Path
-import csv
+import logging
+from datetime import datetime
 
-def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, mode):
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+log_filename = f"wf_run_{timestamp}.log"
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG) 
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                              datefmt="%Y-%m-%d %H:%M:%S")
+file_handler = logging.FileHandler(log_filename)
+file_handler.setLevel(logging.INFO) # save only info in the file
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
+
+
+def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, similar):
     align_out = "alignment.00.txt"
-    sequence_dir = compss_wait_on(
-        create_dir(os.path.join(base_work_dir, "sequences")))
-    split_files = compss_wait_on(
-        split_sequences(input_alignment_file, sequence_dir))
+    sequence_dir = compss_wait_on(apps.create_dir(os.path.join(base_work_dir, "sequences")))
+    split_files = compss_wait_on(apps.split_sequences(input_alignment_file, sequence_dir))
     pairs_rootdir = compss_wait_on(
-        create_dir(os.path.join(base_work_dir, "pair_sequences")))
+        apps.create_dir(os.path.join(base_work_dir, "pair_sequences"))
+    )
     pair_ids = []
     folders = []
     for i in range(len(split_files)):
         for j in range(i + 1, len(split_files)):
             pair_id = (
-                split_files[i].split(".")[-2]
-                + "_"
-                + split_files[j].split(".")[-2])
-            folders.append(
-                create_dir(os.path.join(pairs_rootdir, pair_id)))
+                split_files[i].split(".")[-2] + "_" + split_files[j].split(".")[-2]
+            )
+            folders.append(apps.create_dir(os.path.join(pairs_rootdir, pair_id)))
             pair_ids.append((split_files[i], split_files[j]))
     compss_wait_on(folders)
     raw_metrics = []
@@ -32,12 +46,12 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, mod
         seq1f = os.path.join(sequence_dir, seq1)
         seq2f = os.path.join(sequence_dir, seq2)
         alignf = Path(os.path.join(pair_dir, align_out))
-        masa(pair_dir, seq1f, seq2f, alignf)
-        metrics = get_metrics(pair_dir, alignf, seq1, seq2)
+        apps.masa(pair_dir, seq1f, seq2f, alignf)
+        metrics = apps.get_metrics(pair_dir, alignf, seq1, seq2)
         raw_metrics.append(metrics)
     identities = []
     for m in raw_metrics:
-        identities.append(compute_identity(m))
+        identities.append(apps.compute_identity(m))
     identities = compss_wait_on(identities)
     pairs = []
     for (seq1, seq2), identity in zip(pair_ids, identities):
@@ -47,13 +61,9 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, mod
         similarity[s1][s2] = identity
         similarity[s2][s1] = identity
 
-    if mode == "divergent":
+    if not similar:
         distance = {
-            s: {
-                t: 100.0 - similarity[s][t]
-                for t in similarity[s]
-            }
-            for s in similarity
+            s: {t: 100.0 - similarity[s][t] for t in similarity[s]} for s in similarity
         }
         metric_name = "average pairwise distance (100 - identity)"
     else:
@@ -68,64 +78,63 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, mod
             avg_metric[s] = 0.0
 
     first_selected = max(avg_metric, key=avg_metric.get)
-
-    explanation_txt = os.path.join(
-        base_work_dir,
-        "first_minmax_selection.txt"
-    )
-
-    with open(explanation_txt, "w") as f:
-        f.write(f"First sequence selected: {first_selected}\n")
-        f.write(f"Mode: {mode}\n")
-        f.write(f"Metric used: {metric_name}\n")
-        f.write(f"Average metric value: {avg_metric[first_selected]:.6f}\n\n")
-        f.write("Pairwise values:\n")
-        for other in distance[first_selected]:
-            f.write(
-                f"{first_selected} vs {other}: "
-                f"{distance[first_selected][other]:.6f}\n"
-            )
+    logger.info(f"First sequence selected: {first_selected}")
+    logger.info(f"Similar: {similar}")
+    logger.info(f"Metric used: {metric_name}")
+    logger.info(f"Average metric value: {avg_metric[first_selected]:.6f}")
+    logger.info(f"Average metric value: {avg_metric[first_selected]:.6f}")
+    buffer = ""
+    buffer = "Pairwise values:\n"
+    for other in distance[first_selected]:
+        buffer += f"{first_selected} vs {other}: " + f"{distance[first_selected][other]:.6f}\n"
+    logger.info(buffer)
 
     csv_out = os.path.join(base_work_dir, "pairwise_identity.csv")
-    write_pairwise_csv(pairs, csv_out)
+    apps.write_pairwise_csv(pairs, csv_out)
 
-    selected = maxmin_selection(
-        pairs,
-        split_files,
-        max_sequences,
-        mode=mode)
+    selected = apps.maxmin_selection(pairs, split_files, max_sequences, similar)
 
-    joined_sequences = os.path.join(
-        base_work_dir,
-        "selected_sequences.fasta")
+    joined_sequences = os.path.join(base_work_dir, "selected_sequences.fasta")
 
-    write_selected_sequences(
-        selected,
-        sequence_dir,
-        joined_sequences)
+    apps.write_selected_sequences(selected, sequence_dir, joined_sequences)
 
-    msa_alignment = os.path.join(
-        base_work_dir,
-        "msa_alignment.fasta")
+    msa_alignment = os.path.join(base_work_dir, "msa_alignment.fasta")
 
-    compss_wait_on(
-        pastar(msa_alignment, pastar_threads, joined_sequences))
+    compss_wait_on(apps.pastar(msa_alignment, pastar_threads, joined_sequences))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-i", "--input", type=str, required=True, help="Multifasta file used as input")
-    parser.add_argument("-w", "--workdir", type=str, required=False, default=os.getcwd(), help="Working directory, where all the outputs will be stored")
-    parser.add_argument("-m", "--max_seqs", type=int, required=False, default=5, help="Maximum number of sequences that will undergo the multi-sequence alignment with pastar")
-    parser.add_argument("-p", "--pastar_threads", type=int, required=False, default=1, help="Number of threads to be used in pastar")
     parser.add_argument(
-        "--mode",
-        choices=["divergent", "similar"],
-        default="divergent")
+        "-i", "--input", type=str, required=True, help="Multifasta file used as input"
+    )
+    parser.add_argument(
+        "-w",
+        "--workdir",
+        type=str,
+        required=False,
+        default=os.getcwd(),
+        help="Working directory, where all the outputs will be stored",
+    )
+    parser.add_argument(
+        "-m",
+        "--max_seqs",
+        type=int,
+        required=False,
+        default=5,
+        help="Maximum number of sequences that will undergo the multi-sequence alignment with pastar",
+    )
+    parser.add_argument(
+        "-p",
+        "--pastar_threads",
+        type=int,
+        required=False,
+        default=1,
+        help="Number of threads to be used in pastar",
+    )
+    parser.add_argument("--mode", choices=["divergent", "similar"], default="divergent")
     args = parser.parse_args()
-    main(
-        args.input,
-        args.workdir,
-        args.max_seqs,
-        args.pastar_threads,
-        args.mode)
+    similar = True
+    if args.mode == "similar":
+        similar = True
+    main(args.input, args.workdir, args.max_seqs, args.pastar_threads, similar)
