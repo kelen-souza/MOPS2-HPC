@@ -176,6 +176,7 @@ def write_selected_sequences(selected, sequence_dir, output_fasta):
 
 @task(pairs=COLLECTION_IN, output_csv=FILE_OUT)
 def write_pairwise_csv(pairs, output_csv):
+    import csv
     with open(output_csv, "w", newline="") as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(["seq1", "seq2", "identity"])
