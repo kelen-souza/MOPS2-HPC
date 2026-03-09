@@ -6,20 +6,10 @@ from pathlib import Path
 import logging
 from datetime import datetime
 
-timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-log_filename = f"wf_run_{timestamp}.log"
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG) 
-formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-                              datefmt="%Y-%m-%d %H:%M:%S")
-file_handler = logging.FileHandler(log_filename)
-file_handler.setLevel(logging.INFO) # save only info in the file
-file_handler.setFormatter(formatter)
-logger.addHandler(file_handler)
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
-console_handler.setFormatter(formatter)
-logger.addHandler(console_handler)
+
 
 
 def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, similar):
@@ -86,7 +76,7 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, sim
     buffer = ""
     buffer = "Pairwise values:\n"
     for other in distance[first_selected]:
-        buffer += f"{first_selected} vs {other}: " + f"{distance[first_selected][other]:.6f}\n"
+        buffer += f"\t\t{first_selected} vs {other}: " + f"{distance[first_selected][other]:.6f}\n"
     logger.info(buffer)
 
     csv_out = os.path.join(base_work_dir, "pairwise_identity.csv")
@@ -101,6 +91,7 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, sim
     msa_alignment = os.path.join(base_work_dir, "msa_alignment.fasta")
 
     compss_wait_on(apps.pastar(msa_alignment, pastar_threads, joined_sequences))
+    logger.info("Finished the execution!")
 
 
 if __name__ == "__main__":
@@ -134,7 +125,19 @@ if __name__ == "__main__":
     )
     parser.add_argument("--mode", choices=["divergent", "similar"], default="divergent")
     args = parser.parse_args()
-    similar = True
+    similar = False
     if args.mode == "similar":
         similar = True
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_filename = f"wf_run_{timestamp}.log"
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+                                datefmt="%Y-%m-%d %H:%M:%S")
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(logging.INFO) # save only info in the file
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
     main(args.input, args.workdir, args.max_seqs, args.pastar_threads, similar)
