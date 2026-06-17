@@ -140,6 +140,12 @@ if __name__ == "__main__":
         default=1,
         help="Number of threads to be used in pastar",
     )
+    parser.add_argument(
+        "--benchmark",
+        type=str,
+        required=True,
+        help="Benchmark csv"
+    )
     parser.add_argument("--mode", choices=["divergent", "similar"], default="divergent")
     args = parser.parse_args()
     similar = False
@@ -157,4 +163,4 @@ if __name__ == "__main__":
     console_handler.setLevel(logging.DEBUG)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
-    main(args.input, args.workdir, args.max_seqs, args.pastar_threads, similar)
+    main(args.input, args.workdir, args.max_seqs, args.pastar_threads, similar, args.benchmark)
