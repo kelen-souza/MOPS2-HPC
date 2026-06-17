@@ -6,6 +6,122 @@ import os
 MASA_BINARY = "masa-openmp"
 
 
+@task(seq=FILE_IN, returns=int)
+def get_seq_length(seq):
+    total_len = 0
+
+    with open(seq, 'r') as f:
+        for line in f:
+            # Pula linhas de cabeçalho
+            if line.startswith('>'):
+                continue
+            # Remove quebras de linha e soma o tamanho do texto
+            total_len += len(line.rstrip())
+            
+    return total_len
+
+@task(csv_file=FILE_IN, returns=list)
+def load_benchmark(csv_file):
+    import csv
+    observations = []
+
+    with open(csv_file) as f:
+
+        reader = csv.DictReader(f)
+
+        for row in reader:
+
+            threads = int(row["Threads"])
+
+            for col in row:
+
+                if col == "Threads":
+                    continue
+
+                size = int(col.replace("nt", ""))
+
+                complexity = size * size
+
+                runtime = float(row[col])
+
+                observations.append(
+                    (
+                        complexity,
+                        threads,
+                        runtime
+                    )
+                )
+
+    return observations
+
+@task(data=IN, returns=tuple)
+def train_model(data):
+    import math
+    import numpy as np
+
+    X = []
+    y = []
+
+    for complexity, threads, runtime in data:
+
+        x = math.log(complexity)
+        t = threads
+
+        X.append([
+            1,
+            x,
+            x * x,
+            t,
+            t * t,
+            x * t
+        ])
+
+        y.append(runtime)
+
+    coef, _, _, _ = np.linalg.lstsq(
+        np.array(X),
+        np.array(y),
+        rcond=None
+    )
+
+    return coef
+
+@task(complexity=IN, coef=IN, returns=int)
+def choose_threads(complexity, coef):
+    import math
+    import numpy as np
+    candidates = [
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        48
+    ]
+
+    best_threads = 1
+    best_time = float("inf")
+
+    for t in candidates:
+
+        x = math.log(complexity)
+        predicted = (
+            coef[0] +
+            coef[1] * x +
+            coef[2] * (x**2) +
+            coef[3] * t +
+            coef[4] * (t**2) +
+            coef[5] * x * t
+        )    
+        if predicted < best_time:
+            best_time = predicted
+            best_threads = t
+
+    return best_threads
+
+
+
 @task(returns=str)
 def create_dir(dir):
     import os
@@ -13,10 +129,11 @@ def create_dir(dir):
     return dir
 
 
-@constraint(computing_units="1")
+   
+@constraint(computing_units="{{threads}}")
 @binary(binary="masa-openmp", args="--alignment-edges=++ --work-dir {{work_dir}} {{input_1}} {{input_2}}")
-@task(work_dir=IN, input_1=FILE_IN, input_2=FILE_IN, alignment_file=INOUT)
-def masa(work_dir, input_1, input_2, alignment_file):
+@task(work_dir=IN, input_1=FILE_IN, input_2=FILE_IN, alignment_file=INOUT, threads=IN)
+def masa(work_dir, input_1, input_2, alignment_file, threads):
     """Runs the MASA binary through pycompss
 
      Args:

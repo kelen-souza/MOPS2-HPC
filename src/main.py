@@ -12,7 +12,7 @@ logger.setLevel(logging.DEBUG)
 
 
 
-def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, similar):
+def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, similar, bench_file):
     align_out = "alignment.00.txt"
     logger.info(f"Creating sequences directories...")
     sequence_dir = compss_wait_on(apps.create_dir(os.path.join(base_work_dir, "sequences")))
@@ -34,14 +34,24 @@ def main(input_alignment_file, base_work_dir, max_sequences, pastar_threads, sim
             pair_ids.append((split_files[i], split_files[j]))
     compss_wait_on(folders)
     raw_metrics = []
+    logger.info(f"Loading benchmark file...")
+    data = apps.load_benchmark(bench_file)
+    logger.info(f"Training regression model...")
+    coef = apps.train_model(data)
     logger.info(f"Running MASA on the pairs...")
     for seq1, seq2 in pair_ids:
         pair_id = seq1.split(".")[-2] + "_" + seq2.split(".")[-2]
         pair_dir = os.path.join(pairs_rootdir, pair_id)
         seq1f = os.path.join(sequence_dir, seq1)
         seq2f = os.path.join(sequence_dir, seq2)
+        logger.info("Getting sequences lengths...")
+        l_seq1 = apps.get_seq_length(seq1f)
+        l_seq2 = apps.get_seq_length(seq2f)
+        # assuming that complexity = length of sequence 1 * length of sequence 2
+        logger.info("Choosing the best number of threads...")
+        best_thread = apps.choose_threads((l_seq1*l_seq2), coef)
         alignf = Path(os.path.join(pair_dir, align_out))
-        apps.masa(pair_dir, seq1f, seq2f, alignf)
+        apps.masa(pair_dir, seq1f, seq2f, alignf, best_thread)
         metrics = apps.get_metrics(pair_dir, alignf, seq1, seq2)
         raw_metrics.append(metrics)
     identities = []
