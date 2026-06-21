@@ -1,6 +1,6 @@
-# Workflow MASA-OPENMP PASTAR
+# Workflow MOPS2-HPC
 
-O _workflow_ científico apresentado neste repositório tem como propósito realizar o alinhamento múltiplo de sequências de um subconjunto utilizado como entrada.
+O _workflow_ científico MOPS2 (MASA-OpenMP PA-Star2) apresentado neste repositório tem como propósito realizar o alinhamento múltiplo de sequências de um subconjunto utilizado como entrada.
 
 Para isso, estão acoplados ao _workflow_ dois programas exatos para alinhamento de sequências, sendo eles:
 
