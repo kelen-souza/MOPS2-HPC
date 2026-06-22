@@ -1,77 +1,112 @@
-# Workflow MOPS2-HPC
+# MOPS2-HPC Workflow
 
-O _workflow_ científico MOPS2 (MASA-OpenMP PA-Star2) apresentado neste repositório tem como propósito realizar o alinhamento múltiplo de sequências de um subconjunto utilizado como entrada.
+MOPS2-HPC (**M**ASA-**O**penMP_**P**A-**S**tar**2**) is a scientific workflow for optimal Multiple Sequence Alignment (MSA). Its goal is to identify a representative subset of sequences from a single multi-FASTA file and perform MSA using the A* algorithm. The MOPS2-HPC workflow is parallel, scalable, and suitable for HPC environments.
 
-Para isso, estão acoplados ao _workflow_ dois programas exatos para alinhamento de sequências, sendo eles:
+The workflow integrates two exact sequence alignment tools:
 
-1. [MASA-OPENMP](https://github.com/edanssandes/MASA-OpenMP)
-1. [PA-star](https://github.com/danielsundfeld/astar_msa)
+* [MASA-OPENMP](https://github.com/edanssandes/MASA-OpenMP)
+* [PA-star2](https://github.com/danielsundfeld/astar_msa)
 
+The processing consists of five main stages:
+1. All sequences from the input multi-FASTA file are split into individual FASTA files;
+2. All possible sequence pairs are aligned using MASA-OpenMP;
+3. Pairwise sequence identity is computed from the alignment metrics;
+4. The most representative sequences (either divergent or similar) are selected based on pairwise identities;
+5. The selected subset is submitted to PA-Star2 to construct the MSA.
 
-A figura abaixo apresenta o funcionamento do _workflow_. A entrada é composta por um arquivo multi-FASTA, contendo várias sequências. Essas sequências são decompostas em arquivos individuais e é realizada a execução do MASA em cada par possível da combinação de sequências. Os resutlados dos MASAs são sumarizados e um subconjunto de sequências é filtrado. A partir das sequências seleciondas, o PA-star é executado, gerando um alinhamento múltiplo de sequências desse subconjunto.
-
+The figure below illustrates the conceptual view of the workflow.
 
 ![](./imgs/diagram.png)
 
-O _workflow_ apresenta duas versões. A primeira desenvolvida sem nenhum sistema de gerência de _workflows_ científicos, que pode ser encontrada [aqui](./experiments/wf_wo_pycompss/main.sh). A segunda versão, foi desenvolvida utilizando o sistema de gerência de _workflows_ científicos PyCOMPSs, e se encontra na pasta [src](./src/main.py).
+## Implementations
 
-## Requisitos
+The workflow is available in two versions:
 
-O _workflow_ tem como requisitos os seguintes programas e bibliotecas:
+* Sequential implementation without a Scientific Workflow Management System (SWfMS): [LINK](./experiments/wf_wo_pycompss/main.sh)
+* Parallel implementation using PyCOMPSs: [LINK](./src/main.py)
 
- * MASA-OPENMP v1.0.1.1024
- * PA-star2 v2.0
- * Python $\geq$ v3.11.7
- * PyCOMPSs $\geq$ v3.3.3
- * BioPython $\geq$ v1.85
+## Requirements
 
-## Uso
+* MASA-OpenMP ≥ 1.0.1.1024
+* PA-Star2 ≥ 2.0
+* Python ≥ 3.11
+* PyCOMPSs ≥ 3.3.3
+* Biopython ≥ 1.85
 
-O script deve ser executado a partir da linha de comando da seguinte forma:
+### Main Files
 
-```bash
-python script.py -i <arquivo_fasta> [opções]
-```
+| File         | Description                                                |
+| --------------- | ------------------------------------------------------- |
+| `main.py`       | Main workflow implementation and command-line interface |
+| `apps.py`       | Definition of PyCOMPSs tasks                            |
+| `env_script.sh` | Execution environment configuration                     |
+| `C_denv1.fasta` | Example input dataset                                   |
 
-## Argumentos de Linha de Comando
+## Usage
 
-### Argumentos Obrigatórios
+### Arguments
 
-* **`-i`, `--input`** (`str`, obrigatório)
+#### Required
 
-  Caminho para o arquivo multi-FASTA de entrada contendo as sequências a serem analisadas.
+| Argument       | Description             |
+| --------------- | ---------------------- |
+| `-i`, `--input` | Input multi-FASTA file |
 
-### Argumentos Opcionais
+#### Optional
 
-* **`-w`, `--workdir`** (`str`, opcional, padrão: diretório de trabalho atual)
+| Argument               | Default          | Description                                                          |
+| ------------------------ | --------------- | -------------------------------------------------------------------- |
+| `-w`, `--workdir`        | Current directory | Directory where all output files will be stored                    |
+| `-m`, `--max_seqs`       | `5`             | Maximum number of sequences selected for multiple sequence alignment |
+| `-p`, `--pastar_threads` | `1`             | Number of threads used by PA-Star2                                   |
+| `--mode`                 | `divergent`     | Selection strategy (`divergent` or `similar`)                        |
 
-  Diretório de trabalho (caminho absoluto) onde todos os arquivos de saída gerados pelo workflow serão armazenados.
+## Running with PyCOMPSs
 
-* **`-m`, `--max_seqs`** (`int`, opcional, padrão: `5`)
-
-  Número máximo de sequências que serão selecionadas e submetidas à etapa de alinhamento múltiplo de sequências utilizando o Pastar.
-
-* **`-p`, `--pastar_threads`** (`int`, opcional, padrão: `1`)
-
-  Número de threads a serem utilizadas pelo Pastar durante o processo de alinhamento.
-
-* **`-s`, `--similar` / `--no-similar`** (`bool`, opcional, padrão: `False`)
-
-  Estratégia de seleção das sequências:
-
-  * Quando habilitado (`--similar`), o workflow seleciona as sequências mais similares.
-  * Quando omitido ou desabilitado (`--no-similar`, comportamento padrão), o workflow seleciona as sequências mais divergentes.
-
-## Exemplo
+The workflow must be executed through the PyCOMPSs runtime. Example:
 
 ```bash
-python script.py \
-  --input sequences.fasta \
-  --workdir /results/ \
-  --max_seqs 10 \
-  --pastar_threads 4 \
-  --similar
+enqueue_compss \
+  --lang=python \
+  --python_interpreter=/scratch/bin/python \
+  --queue=cluster_partition \
+  --num_nodes=1 \
+  --exec_time=300 \
+  --env_script=src/env_script.sh \
+  --log_level=debug \
+  --log_dir=$PWD \
+  --pythonpath=$PWD \
+  src/main.py \
+  -i $PWD/sequences.fasta \
+  -w $PWD/results \
+  -p 48 \
+  -m 9 \
+  --mode divergent
 ```
 
-Esse comando seleciona até 10 sequências similares a partir de `sequences.fasta`, executa o Pastar utilizando 4 threads e armazena todos os resultados no diretório `./results/`.
+## Generated Files
 
+After execution, the output directory will contain:
+
+```text
+results/
+├── sequences/
+├── pair_sequences/
+├── pairwise_identity.csv
+├── selected_sequences.fasta
+└── msa_alignment.fasta
+```
+
+### Output Description
+
+| File                    | Description                                          |
+| -------------------------- | ------------------------------------------------- |
+| `pairwise_identity.csv`    | Pairwise sequence identity values                 |
+| `selected_sequences.fasta` | Selected subset of sequences                      |
+| `msa_alignment.fasta`      | Multiple sequence alignment generated by PA-Star2 |
+
+Additionally, a log file containing detailed information about the workflow execution is automatically created:
+
+```text
+wf_run_YYYYMMDD_HHMMSS.log
+```
