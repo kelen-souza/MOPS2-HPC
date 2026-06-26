@@ -110,3 +110,6 @@ Additionally, a log file containing detailed information about the workflow exec
 ```text
 wf_run_YYYYMMDD_HHMMSS.log
 ```
+## If you used it, please cite:
+
+- Terra, R., Souza, K., Rocha, H., Osthoff, C., Carvalho, D., & Ocana, K. (2025, October). Workflow para Alinhamento Exato de Sequências em Sistemas de Processamento de Alto Desempenho. In _Simpósio em Sistemas Computacionais de Alto Desempenho (SSCAD)_ (pp. 338-349). SBC.
